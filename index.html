@@ -1,0 +1,1233 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>EVV Billing Analyzer</title>
+    <!-- External Libraries -->
+    <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/exceljs@4.3.0/dist/exceljs.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+    
+    <style>
+        :root {
+            --c-bg-window: #282828; --c-bg-base: #1E1E1E; --c-bg-alt: #2D2D2D; --c-bg-btn: #3C3C3C;
+            --c-bg-header: #333333; --c-text-main: #E6E6E6; --c-text-light: #BBBBBB; --c-gridline: #444444;
+            --c-highlight: #6496F0; --c-highlight-text: #1E1E1E; --c-toolbtn-bg: #6496F0; --c-toolbtn-hover: #517FCC;
+            --c-cell-red: #B91C1C; --c-cell-amber: #D97706; --c-cell-green: #166534;
+        }
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background-color: var(--c-bg-window); color: var(--c-text-main); display: flex; flex-direction: column; height: 100vh; overflow: hidden; }
+        .app-header {
+            background: linear-gradient(to right, #1a1a1a, #2a2a2a);
+            padding: 20px 30px;
+            border-bottom: 1px solid #444;
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.3);
+            flex-shrink: 0;
+        }
+        .app-header h1 {
+            font-size: 32px;
+            margin-bottom: 8px;
+            color: #E6E6E6;
+            text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.5);
+        }
+        .app-header p {
+            font-size: 16px;
+            margin: 0;
+            color: var(--c-text-light);
+        }
+        .toolbar { background-color: var(--c-bg-window); padding: 5px; border-bottom: 1px solid var(--c-gridline); flex-shrink: 0; display: flex; align-items: center; }
+        .tool-btn { background: var(--c-toolbtn-bg); color: white; padding: 6px 12px; border: none; border-radius: 4px; margin: 2px; cursor: pointer; font-size: 14px; display: flex; align-items: center; gap: 6px; transition: background-color 0.2s; }
+        .tool-btn:hover { background: var(--c-toolbtn-hover); }
+        .tool-btn:disabled { background: #555; color: #999; cursor: not-allowed; }
+        main.tab-container { flex-grow: 1; display: flex; flex-direction: column; min-height: 0; }
+        #main-content-area { flex-grow: 1; display: flex; flex-direction: column; overflow: hidden; }
+        .tab-buttons { padding: 5px 5px 0 5px; border-bottom: 1px solid var(--c-gridline); flex-shrink: 0; }
+        .tab-button { padding: 8px 16px; cursor: pointer; border: 1px solid transparent; border-bottom: none; background: var(--c-bg-btn); color: var(--c-text-main); border-radius: 4px 4px 0 0; }
+        .tab-button.active { background: var(--c-bg-base); border-color: var(--c-gridline); position: relative; top: 1px; }
+        .tab-content { display: none; flex-direction: column; background-color: var(--c-bg-base); padding: 15px; flex-grow: 1; overflow-y: auto; }
+        .tab-content.active { display: flex; }
+        .hidden { display: none !important; }
+        #dashboard-view { align-items: center; justify-content: center; }
+        #empty-state-panel { text-align: center; }
+        #empty-state-content h2 { font-size: 28px; color: #FFF; margin-bottom: 10px; }
+        #empty-state-content p { font-size: 16px; color: var(--c-text-light); margin-bottom: 25px; }
+        .main-action { padding: 12px 24px; font-size: 16px; }
+        #dashboard-content { width: 100%; height: 100%; display: flex; flex-direction: column; gap: 20px; }
+        .stats-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px; }
+        .stat-card { background: var(--c-bg-alt); padding: 20px; border-radius: 8px; border-left: 5px solid var(--c-highlight); }
+        .stat-card.overdue { border-color: var(--c-cell-red); }
+        .stat-card.no-pa { border-color: var(--c-cell-amber); }
+        .stat-card h3 { margin: 0 0 10px; font-size: 16px; color: var(--c-text-light); }
+        .stat-card span { font-size: 36px; font-weight: bold; color: #FFF; }
+        .chart-controls { padding-bottom: 10px; }
+        .chart-container { flex-grow: 1; min-height: 300px; padding: 10px; background: var(--c-bg-alt); border-radius: 8px; position: relative; }
+        #data-view .splitter { display: flex; flex-direction: column; height: 100%; }
+        #data-view .panel-top { height: 60%; display: flex; flex-direction: column; min-height: 50px; }
+        #data-view .panel-bottom { height: 40%; display: flex; flex-direction: column; min-height: 50px; padding-top: 10px; }
+        .controls { display: flex; gap: 10px; margin-bottom: 10px; flex-shrink: 0; }
+        input, select { background-color: var(--c-bg-base); color: var(--c-text-main); border: 1px solid var(--c-gridline); padding: 6px; border-radius: 4px; }
+        #search-input { flex-grow: 1; }
+        #summary-label { font-size: 12px; padding: 6px; flex-shrink: 0; color: var(--c-text-light); }
+        .table-wrapper { flex-grow: 1; overflow: auto; border: 1px solid var(--c-gridline); position: relative; }
+        table { width: 100%; border-collapse: collapse; background-color: var(--c-bg-base); }
+        thead { position: sticky; top: 0; z-index: 1; background-color: var(--c-bg-header); }
+        th, td { padding: 8px 10px; text-align: left; white-space: nowrap; }
+        th { font-weight: bold; color: #FFF; cursor: pointer; }
+        th.sort-asc::after, th.sort-desc::after { content: ''; display: inline-block; margin-left: 5px; border: 5px solid transparent; }
+        th.sort-asc::after { border-bottom-color: white; }
+        th.sort-desc::after { border-top-color: white; }
+        tbody tr:nth-child(even) { background-color: var(--c-bg-alt); }
+        td.status-overdue { background-color: var(--c-cell-red) !important; color: white !important; font-weight: bold; }
+        td.status-inactive { background-color: var(--c-cell-red) !important; color: white !important; }
+        td.status-pa-expired { background-color: var(--c-cell-amber) !important; color: #111 !important; }
+        .instructions-content, .settings-box { max-width: 800px; }
+        .instructions-content h2, .settings-box h2 { margin-bottom: 15px; color: var(--c-highlight); margin-top: 20px;}
+        .settings-box h2:first-child { margin-top: 0; }
+        .instructions-content p, .settings-box p { margin-bottom: 10px; line-height: 1.6; }
+        .instructions-content ol, .instructions-content ul { padding-left: 25px; margin-top: 10px; }
+        .instructions-content li { margin-bottom: 15px; line-height: 1.6; }
+        .instructions-content strong { color: #FFF; }
+        .instructions-content a { color: var(--c-highlight); }
+        .form-row { display: flex; align-items: center; gap: 10px; margin-bottom: 15px; }
+        .form-row label { flex-basis: 200px; text-align: right; }
+        #toast-container { position: fixed; bottom: 20px; right: 20px; z-index: 9999; display: flex; flex-direction: column; gap: 10px; }
+        .toast { padding: 15px 20px; border-radius: 5px; color: #fff; font-size: 14px; opacity: 0; transform: translateY(20px); transition: all 0.3s ease; }
+        .toast.show { opacity: 1; transform: translateY(0); }
+        .toast.success { background-color: #28a745; }
+        .toast.error { background-color: #dc3545; }
+        .toast.info { background-color: #17a2b8; }
+        #status-bar { padding: 4px 8px; background-color: var(--c-bg-window); border-top: 1px solid var(--c-gridline); font-size: 12px; flex-shrink: 0; display: flex; justify-content: space-between; align-items: center; }
+        #status-bar span { color: var(--c-text-light); }
+        /* Raw Data Tab Styles */
+        #raw-data-view { display: flex; flex-direction: column; height: 100%; }
+        #raw-data-controls { flex-shrink: 0; margin-bottom: 10px; display: flex; gap: 10px; align-items: center; }
+        #raw-data-table-container { flex-grow: 1; overflow: auto; border: 1px solid var(--c-gridline); position: relative; }
+        #table-raw-data { width: 100%; border-collapse: collapse; }
+        #table-raw-data thead { position: sticky; top: 0; z-index: 1; background-color: var(--c-bg-header); }
+        #table-raw-data th { padding: 8px; text-align: left; font-weight: bold; color: #FFF; border: 1px solid var(--c-gridline); white-space: nowrap; }
+        #table-raw-data td { padding: 8px; border: 1px solid var(--c-gridline); white-space: nowrap; }
+        #column-selector { position: absolute; top: 35px; right: 10px; background: var(--c-bg-alt); border: 1px solid var(--c-gridline); padding: 10px; border-radius: 5px; box-shadow: 0 2px 10px rgba(0,0,0,0.5); z-index: 10; max-height: 400px; overflow-y: auto; min-width: 200px; }
+        #column-selector.hidden { display: none; }
+        #column-selector h3 { margin-bottom: 10px; color: var(--c-highlight); font-size: 14px; }
+        #column-selector label { display: block; margin: 5px 0; cursor: pointer; }
+        #column-selector label:hover { color: var(--c-highlight); }
+        #column-selector input[type="checkbox"] { margin-right: 8px; }
+        #column-selector button { width: 100%; margin-top: 10px; padding: 5px; background: var(--c-toolbtn-bg); color: white; border: none; border-radius: 3px; cursor: pointer; }
+        #column-selector button:hover { background: var(--c-toolbtn-hover); }
+        .loading-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.7); display: none; justify-content: center; align-items: center; z-index: 10000; }
+        .loading-overlay.show { display: flex; }
+        .loading-spinner { width: 50px; height: 50px; border: 5px solid var(--c-bg-alt); border-top: 5px solid var(--c-highlight); border-radius: 50%; animation: spin 1s linear infinite; }
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+    </style>
+</head>
+<body>
+    <header class="app-header">
+        <h1>📊 EVV Billing Analyzer</h1>
+        <p>Comprehensive billing analysis and reporting tool</p>
+    </header>
+    
+    <div class="toolbar">
+        <button id="btn-load-visit" class="tool-btn" title="Load Therap Visit Report"><span>📁</span> Visit Report</button>
+        <button id="btn-load-pa" class="tool-btn" title="Load FOCUS PA Report"><span>📋</span> PA Report</button>
+        <button id="btn-load-status" class="tool-btn" title="Load FOCUS Status Report"><span>📊</span> Status Report</button>
+        <span style="border-left: 1px solid #444; height: 20px; margin: 0 10px;"></span>
+        <button id="btn-export" class="tool-btn" title="Export All Data to Excel"><span>💾</span> Export</button>
+        <button id="btn-copy" class="tool-btn" title="Copy Recent Table to Clipboard"><span>📋</span> Copy Table</button>
+        <button id="btn-clear" class="tool-btn" title="Clear All Data"><span>🗑️</span> Clear All</button>
+    </div>
+    
+    <main class="tab-container">
+        <div id="main-content-area">
+            <div class="tab-buttons">
+                <button class="tab-button active" data-tab="dashboard">📊 Dashboard</button>
+                <button class="tab-button" data-tab="data">📋 Data View</button>
+                <button class="tab-button" data-tab="raw-data">🗂️ Raw Data</button>
+                <button class="tab-button" data-tab="settings">⚙️ Settings</button>
+                <button class="tab-button" data-tab="instructions">📖 Instructions</button>
+            </div>
+            
+            <div id="dashboard-view" class="tab-content active">
+                <div id="empty-state-panel">
+                    <div id="empty-state-content">
+                        <h2>Welcome to EVV Billing Analyzer</h2>
+                        <p>Start by loading your Therap Visit Report to begin analysis</p>
+                        <button id="btn-load-visit-main" class="tool-btn main-action"><span>📁</span> Load Visit Report</button>
+                    </div>
+                </div>
+                
+                <div id="dashboard-content" class="hidden">
+                    <div class="stats-grid">
+                        <div class="stat-card">
+                            <h3>Total Individuals</h3>
+                            <span id="stat-total">0</span>
+                        </div>
+                        <div class="stat-card">
+                            <h3>Active in FOCUS</h3>
+                            <span id="stat-active">0</span>
+                        </div>
+                        <div class="stat-card overdue">
+                            <h3>Overdue Billing (&gt;30 days)</h3>
+                            <span id="stat-overdue">0</span>
+                        </div>
+                        <div class="stat-card no-pa">
+                            <h3>No Active PA</h3>
+                            <span id="stat-no-pa">0</span>
+                        </div>
+                    </div>
+                    <div class="chart-controls">
+                        <label>
+                            <input type="checkbox" id="chk-exclude-incomplete"> Exclude incomplete current month from trend
+                        </label>
+                    </div>
+                    <div class="chart-container">
+                        <canvas id="billing-chart"></canvas>
+                    </div>
+                </div>
+            </div>
+            
+            <div id="data-view" class="tab-content">
+                <div class="splitter">
+                    <div class="panel-top">
+                        <h2>Most Recent Billing Summary</h2>
+                        <div class="controls">
+                            <input type="text" id="search-input" placeholder="Search individuals...">
+                            <select id="filter-active">
+                                <option value="all">All Clients</option>
+                                <option value="active">Active Only</option>
+                                <option value="inactive">Inactive Only</option>
+                            </select>
+                            <select id="filter-pa">
+                                <option value="all">All PA Status</option>
+                                <option value="active-pa">Active PA</option>
+                                <option value="no-pa">No Active PA</option>
+                            </select>
+                        </div>
+                        <div id="summary-label"></div>
+                        <div class="table-wrapper">
+                            <table id="table-recent">
+                                <thead></thead>
+                                <tbody></tbody>
+                            </table>
+                        </div>
+                    </div>
+                    <div class="panel-bottom">
+                        <h2>Monthly Billing Summary</h2>
+                        <div class="table-wrapper">
+                            <table id="table-monthly">
+                                <thead></thead>
+                                <tbody></tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <div id="raw-data-view" class="tab-content">
+                <div id="raw-data-controls">
+                    <select id="select-raw-data-source">
+                        <option value="">Select a data source...</option>
+                        <option value="visits">Therap Visit Report</option>
+                        <option value="pas">FOCUS PA Report</option>
+                        <option value="status">FOCUS Status Report</option>
+                    </select>
+                    <input type="text" id="raw-data-search-input" placeholder="Search raw data...">
+                    <button id="btn-toggle-columns" class="tool-btn">⚙️ Column Settings</button>
+                </div>
+                <div id="raw-data-table-container">
+                    <table id="table-raw-data">
+                        <thead></thead>
+                        <tbody></tbody>
+                    </table>
+                    <div id="column-selector" class="hidden">
+                        <h3>Select Columns</h3>
+                        <div id="column-selector-container"></div>
+                        <button id="btn-save-column-preferences">Save Preferences</button>
+                        <button id="btn-reset-columns">Reset to Default</button>
+                    </div>
+                </div>
+            </div>
+            
+            <div id="settings-view" class="tab-content">
+                <div class="settings-box">
+                    <h2>Analysis Settings</h2>
+                    <div class="form-row">
+                        <label for="setting-overdue-days">Overdue Threshold (days):</label>
+                        <input type="number" id="setting-overdue-days" value="30" min="1" max="365">
+                    </div>
+                    <button id="btn-save-settings" class="tool-btn">💾 Save Settings</button>
+                    
+                    <h2>Column Preferences</h2>
+                    <p>Column visibility preferences are managed in the Raw Data tab. Click the "Column Settings" button to customize which columns are displayed for each data source.</p>
+                    <div id="settings-column-preferences"></div>
+                </div>
+            </div>
+            
+            <div id="instructions-view" class="tab-content">
+                <div class="instructions-content">
+                    <h2>Getting Started</h2>
+                    <p>Welcome to the EVV Billing Analyzer! This tool helps you analyze billing patterns and identify individuals who may need attention.</p>
+                    
+                    <h2>Required Files</h2>
+                    <ol>
+                        <li>
+                            <strong>Therap Visit Report (Required)</strong><br>
+                            This is your main data file from Therap containing billing information.
+                        </li>
+                        <li>
+                            <strong>FOCUS PA Report (Optional)</strong><br>
+                            Provides Prior Authorization status for each individual.
+                        </li>
+                        <li>
+                            <strong>FOCUS Status Report (Optional)</strong><br>
+                            Shows active/inactive status and provider assignments in FOCUS.
+                        </li>
+                    </ol>
+                    
+                    <h2>How to Use</h2>
+                    <ol>
+                        <li>Click "Visit Report" in the toolbar to load your Therap billing data</li>
+                        <li>Optionally load PA and Status reports for additional insights</li>
+                        <li>Use the Dashboard tab to see high-level statistics and trends</li>
+                        <li>Use the Data View tab to see detailed individual records</li>
+                        <li>Export your analysis to Excel for further processing</li>
+                    </ol>
+                    
+                    <h2>Features</h2>
+                    <ul>
+                        <li>Automatic calculation of days since last billing</li>
+                        <li>Visual indicators for overdue billing (&gt;30 days)</li>
+                        <li>PA status tracking with expiration alerts</li>
+                        <li>Active/inactive status from FOCUS</li>
+                        <li>Monthly billing trends with service breakdowns</li>
+                        <li>Search and filter capabilities</li>
+                        <li>Excel export with multiple worksheets</li>
+                        <li>Customizable column visibility in Raw Data view</li>
+                    </ul>
+                    
+                    <h2>Tips</h2>
+                    <ul>
+                        <li>Red highlights indicate overdue billing or inactive status</li>
+                        <li>Amber highlights indicate expired or missing PA</li>
+                        <li>Click column headers to sort data</li>
+                        <li>Use the search box to quickly find specific individuals</li>
+                        <li>The trend line on the chart shows overall billing trajectory</li>
+                        <li>Column preferences are saved automatically and persist between sessions</li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+    </main>
+    
+    <div id="status-bar">
+        <span>Ready</span>
+        <span>EVV Billing Analyzer v2.0</span>
+    </div>
+    
+    <div id="toast-container"></div>
+    
+    <div class="loading-overlay">
+        <div class="loading-spinner"></div>
+    </div>
+    
+    <!-- Hidden file inputs -->
+    <input type="file" id="input-visit" accept=".xlsx,.xls,.csv" style="display: none;">
+    <input type="file" id="input-pa" accept=".xlsx,.xls,.csv" style="display: none;">
+    <input type="file" id="input-status" accept=".xlsx,.xls,.csv" style="display: none;">
+    
+    <script>
+        (function() {
+            'use strict';
+            // --- STATE MANAGEMENT ---
+            let rawData = { visits: [], pas: [], status: [] };
+            let dfSummary = [], dfMonthly = [];
+            let statusFileLoaded = false;
+            let overdueDays = 30;
+            let chartInstance = null;
+            let sortStateRecent = { column: 'Days Since Last Billing', direction: 'desc' };
+            let sortStateMonthly = { column: 'Individual Name', direction: 'asc' };
+            
+            let rawDataState = {
+                currentSource: null,
+                visibleColumns: JSON.parse(localStorage.getItem('billing_visible_columns')) || { visits: null, pas: null, status: null }
+            };
+
+            // --- DOM CACHE ---
+            const dom = {
+                btnLoadVisit: document.getElementById('btn-load-visit'), btnLoadVisitMain: document.getElementById('btn-load-visit-main'),
+                btnLoadPa: document.getElementById('btn-load-pa'), btnLoadStatus: document.getElementById('btn-load-status'),
+                btnExport: document.getElementById('btn-export'), btnCopy: document.getElementById('btn-copy'),
+                btnClear: document.getElementById('btn-clear'), btnSaveSettings: document.getElementById('btn-save-settings'),
+                btnResetColumns: document.getElementById('btn-reset-columns'),
+                btnSaveColumnPreferences: document.getElementById('btn-save-column-preferences'),
+                settingsColumnPreferences: document.getElementById('settings-column-preferences'),
+                inputVisit: document.getElementById('input-visit'), inputPa: document.getElementById('input-pa'),
+                inputStatus: document.getElementById('input-status'), searchInput: document.getElementById('search-input'),
+                filterActive: document.getElementById('filter-active'), filterPa: document.getElementById('filter-pa'),
+                settingOverdueDays: document.getElementById('setting-overdue-days'),
+                emptyStatePanel: document.getElementById('empty-state-panel'), dashboardContent: document.getElementById('dashboard-content'),
+                statusBar: document.querySelector('#status-bar span:first-child'), toastContainer: document.getElementById('toast-container'),
+                tableRecentHead: document.querySelector('#table-recent thead'), tableRecentBody: document.querySelector('#table-recent tbody'),
+                tableMonthlyHead: document.querySelector('#table-monthly thead'), tableMonthlyBody: document.querySelector('#table-monthly tbody'),
+                summaryLabel: document.getElementById('summary-label'),
+                statTotal: document.getElementById('stat-total'), statActive: document.getElementById('stat-active'),
+                statOverdue: document.getElementById('stat-overdue'), statNoPa: document.getElementById('stat-no-pa'),
+                chartCanvas: document.getElementById('billing-chart'),
+                chkExcludeIncomplete: document.getElementById('chk-exclude-incomplete'), // New checkbox
+                selectRawDataSource: document.getElementById('select-raw-data-source'),
+                columnSelectorContainer: document.getElementById('column-selector-container'),
+                tableRawData: document.getElementById('table-raw-data'),
+                btnToggleColumns: document.getElementById('btn-toggle-columns'),
+                rawDataSearchInput: document.getElementById('raw-data-search-input'),
+            };
+
+            // --- UTILITIES ---
+            const showToast = (message, type = 'info', duration = 3000) => {
+                const toast = document.createElement('div');
+                toast.className = `toast ${type}`;
+                toast.textContent = message;
+                dom.toastContainer.appendChild(toast);
+                setTimeout(() => toast.classList.add('show'), 10);
+                setTimeout(() => {
+                    toast.classList.remove('show');
+                    toast.addEventListener('transitionend', () => toast.remove());
+                }, duration);
+            };
+            const parseExcelDate = (d) => {
+                if (d === null || d === undefined || d === '') return null;
+                if (typeof d === 'number') {
+                    const excelEpoch = new Date(Date.UTC(1899, 11, 30));
+                    const date = new Date(excelEpoch.getTime() + d * 24 * 60 * 60 * 1000);
+                    return (date instanceof Date && !isNaN(date)) ? date : null;
+                }
+                const date = new Date(d);
+                return (date instanceof Date && !isNaN(date)) ? date : null;
+            };
+            const cleanName = (s) => (s && typeof s === 'string') ? s.replace(/,/g, ' ').toUpperCase().split(/\s+/).join(' ') : '';
+            const formatDate = (d) => (d instanceof Date && !isNaN(d)) ? `${String(d.getMonth() + 1).padStart(2, '0')}/${String(d.getDate()).padStart(2, '0')}/${d.getFullYear()}` : '';
+            
+            const getTherapProviderName = (fullProviderString) => {
+                if (!fullProviderString || typeof fullProviderString !== 'string') return '';
+                const parts = fullProviderString.split(' / ');
+                return parts[0].trim();
+            };
+
+            const cleanFocusAssignments = (assignmentsString) => {
+                if (!assignmentsString || typeof assignmentsString !== 'string') return '';
+                const parts = assignmentsString.split(' / ').map(p => p.trim());
+                const filteredAndCleanedParts = parts.filter(part => !part.toLowerCase().includes('(case manager)')).map(part => part.replace(/\s*\(.*?\)\s*/g, '').trim());
+                return [...new Set(filteredAndCleanedParts.filter(p => p !== ''))].join(' / ');
+            };
+            
+            const calculateTrendline = (data) => {
+                const n = data.length;
+                if (n < 2) return { slope: 0, intercept: data[0] || 0 };
+                let sumX = 0, sumY = 0, sumXY = 0, sumX2 = 0;
+                for (let i = 0; i < n; i++) {
+                    sumX += i;
+                    sumY += data[i];
+                    sumXY += i * data[i];
+                    sumX2 += i * i;
+                }
+                const slope = (n * sumXY - sumX * sumY) / (n * sumX2 - sumX * sumX);
+                const intercept = (sumY - slope * sumX) / n;
+                return { slope, intercept };
+            };
+
+            const saveVisibleColumns = () => {
+                localStorage.setItem('billing_visible_columns', JSON.stringify(rawDataState.visibleColumns));
+            };
+
+            const checkFileDate = (file) => {
+                const ONE_DAY_MS = 24 * 60 * 60 * 1000;
+                const now = new Date();
+                const fileDate = new Date(file.lastModified);
+                const ageMs = now - fileDate;
+
+                if (ageMs > ONE_DAY_MS) {
+                    const formattedDate = fileDate.toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
+                    return confirm(`Warning: The file "${file.name}" was last modified on ${formattedDate} (more than 1 day ago).\n\nAre you sure you want to proceed with loading this potentially outdated file?`);
+                }
+                return true;
+            };
+
+            // --- DATA PROCESSING ---
+            const compute = () => {
+                if (rawData.visits.length === 0) {
+                    dom.statusBar.textContent = 'No visit data loaded. Load a file to begin.';
+                    dfSummary = []; dfMonthly = [];
+                    renderAll();
+                    return;
+                }
+                dom.statusBar.textContent = 'Processing...';
+
+                const validVisits = rawData.visits.filter(r => r['Individual Name'] && r['Billed Service 1 Date'] instanceof Date && !isNaN(r['Billed Service 1 Date']));
+                
+                let summaryMap = new Map();
+                validVisits.forEach(r => {
+                    if (!summaryMap.has(r['Individual Name']) || r['Billed Service 1 Date'] > summaryMap.get(r['Individual Name'])['Billed Service 1 Date']) {
+                        summaryMap.set(r['Individual Name'], r);
+                    }
+                });
+
+                const today = new Date(); today.setHours(0,0,0,0);
+                
+                const activeClientIDs = new Set();
+                const statusDataMap = new Map(); 
+
+                if (rawData.status.length > 0) {
+                    rawData.status.forEach(r => {
+                        const maid = String(r.MAID);
+                        if (maid) {
+                            activeClientIDs.add(maid);
+                            statusDataMap.set(maid, r); 
+                        }
+                    });
+                }
+
+                dfSummary = Array.from(summaryMap.values()).map(row => {
+                    const lastBilled = row['Billed Service 1 Date'];
+                    const maidNumber = String(row['Medicaid Number']);
+                    const statusRow = statusDataMap.get(maidNumber);
+                    
+                    let focusAssignments = 'N/A';
+                    if (statusFileLoaded) {
+                         if (statusRow && statusRow['Assignments']) {
+                            focusAssignments = cleanFocusAssignments(statusRow['Assignments']);
+                         } else if (!activeClientIDs.has(maidNumber)) {
+                            focusAssignments = 'N/A (Inactive)';
+                         }
+                    }
+                    
+                    return {
+                        ...row,
+                        'Days Since Last Billing': Math.round((today - lastBilled) / (1000 * 60 * 60 * 24)),
+                        'Active': statusFileLoaded ? (activeClientIDs.has(maidNumber)) ? 'Active' : 'Inactive' : 'Unknown',
+                        'Individual_clean': cleanName(row['Individual Name']),
+                        'Therap Provider': getTherapProviderName(row['Service Provider']),
+                        'Focus Assignments': focusAssignments,
+                    };
+                });
+
+                if (rawData.pas.length > 0) {
+                    const paData = rawData.pas.map(r => ({ ...r, 'Begin Date': parseExcelDate(r['Begin Date']), 'End Date': parseExcelDate(r['End Date']), 'Individual_clean': cleanName(r.Individual) }));
+                    const paGroups = paData.reduce((acc, r) => { (acc[r.Individual_clean] = acc[r.Individual_clean] || []).push(r); return acc; }, {});
+
+                    dfSummary.forEach(row => {
+                        const records = paGroups[row.Individual_clean];
+                        if (!records) { row['PA Status'] = 'No PA'; return; } 
+                        
+                        const active = records.find(p => p['Begin Date'] <= today && p['End Date'] >= today);
+                        if (active) {
+                            row['PA Status'] = 'Active';
+                        } else {
+                            const maxEnd = new Date(Math.max(...records.map(p => p['End Date']).filter(d => d instanceof Date && !isNaN(d))));
+                            row['PA Status'] = (maxEnd instanceof Date && !isNaN(maxEnd)) ? formatDate(maxEnd) : 'Expired';
+                        }
+                    });
+                } else {
+                    dfSummary.forEach(row => row['PA Status'] = 'N/A');
+                }
+
+                dfSummary.forEach(row => row.isOverdue = row['Days Since Last Billing'] > overdueDays);
+                
+                let tempMonthlyMap = new Map();
+                validVisits.forEach(r => {
+                    const name = r['Individual Name'], date = r['Billed Service 1 Date'];
+                    if (!(date instanceof Date) || isNaN(date)) return;
+                    const month = `${String(date.getMonth() + 1).padStart(2,'0')}/${date.getFullYear()}`;
+                    if (!tempMonthlyMap.has(name)) tempMonthlyMap.set(name, {});
+                    tempMonthlyMap.get(name)[month] = (tempMonthlyMap.get(name)[month] || 0) + 1;
+                });
+
+                const allMonthsForTable = [...new Set(validVisits.map(r => `${String(r['Billed Service 1 Date'].getMonth() + 1).padStart(2,'0')}/${r['Billed Service 1 Date'].getFullYear()}`))]
+                    .sort((a,b) => new Date(`01/${a}`) - new Date(`01/${b}`));
+
+                dfMonthly = Array.from(tempMonthlyMap.entries()).map(([name, months]) => {
+                    let row = { 'Individual Name': name };
+                    allMonthsForTable.forEach(m => row[m] = months[m] || 0);
+                    row['Total'] = Object.values(months).reduce((a, b) => a + b, 0);
+                    return row;
+                });
+
+                renderAll();
+                dom.statusBar.textContent = `Loaded: ${dfSummary.length} individuals | ${validVisits.length} visits`;
+            };
+
+            const getFilteredAndSortedData = () => {
+                const searchTerm = dom.searchInput.value.toLowerCase();
+                const activeFilter = dom.filterActive.value;
+                const paFilter = dom.filterPa.value;
+
+                let filtered = dfSummary.filter(row => {
+                    if (searchTerm && !row['Individual Name'].toLowerCase().includes(searchTerm)) return false;
+                    if (activeFilter === 'active' && row.Active !== 'Active') return false;
+                    if (activeFilter === 'inactive' && row.Active !== 'Inactive') return false;
+                    if (paFilter === 'active-pa' && row['PA Status'] !== 'Active') return false;
+                    if (paFilter === 'no-pa' && row['PA Status'] === 'Active') return false;
+                    return true;
+                });
+
+                return filtered.sort((a, b) => {
+                    const col = sortStateRecent.column;
+                    const valA = a[col], valB = b[col];
+                    let comparison = 0;
+
+                    if (valA instanceof Date && valB instanceof Date) {
+                        comparison = valA - valB;
+                    } else if (typeof valA === 'number' && typeof valB === 'number') {
+                        comparison = valA - valB;
+                    } else {
+                        const strA = String(valA || '');
+                        const strB = String(valB || '');
+                        comparison = strA.localeCompare(strB);
+                    }
+                    return sortStateRecent.direction === 'asc' ? comparison : -comparison;
+                });
+            };
+
+            const renderRecentTable = () => {
+                const dataToRender = getFilteredAndSortedData();
+                dom.summaryLabel.textContent = `Displaying ${dataToRender.length} of ${dfSummary.length} individuals.`;
+
+                // MODIFIED: Changed column order as requested
+                const headers = ['Individual Name', 'Last Billed Date', 'Days Since Last Billing', 'Therap Provider', 'Focus Assignments', 'Medicaid Number', 'Focus Active', 'PA Status'];
+                const originalHeaders = ['Individual Name', 'Billed Service 1 Date', 'Days Since Last Billing', 'Therap Provider', 'Focus Assignments', 'Medicaid Number', 'Active', 'PA Status'];
+
+                dom.tableRecentHead.innerHTML = `<tr>${headers.map((h, i) => 
+                    `<th data-col="${originalHeaders[i]}" class="${(originalHeaders[i] === sortStateRecent.column) ? `sort-${sortStateRecent.direction}` : ''}">${h}</th>`
+                ).join('')}</tr>`;
+                
+                dom.tableRecentBody.innerHTML = dataToRender.map(row => {
+                    const overdueClass = row.isOverdue ? 'status-overdue' : '';
+                    const activeClass = row.Active === 'Inactive' ? 'status-inactive' : '';
+                    const paClass = (row['PA Status'] === 'No PA' || (row['PA Status'] !== 'Active' && row['PA Status'] !== 'N/A')) ? 'status-pa-expired' : '';
+                    
+                    return `<tr>
+                                <td>${row['Individual Name'] || ''}</td>
+                                <td>${formatDate(row['Billed Service 1 Date'])}</td>
+                                <td class="${overdueClass}">${row['Days Since Last Billing']}</td>
+                                <td>${row['Therap Provider'] || ''}</td>
+                                <td>${row['Focus Assignments'] || ''}</td>
+                                <td>${row['Medicaid Number'] || ''}</td>
+                                <td class="${activeClass}">${row['Active']}</td>
+                                <td class="${paClass}">${row['PA Status']}</td>
+                            </tr>`;
+                }).join('');
+            };
+
+            const renderMonthlyTable = () => {
+                if (dfMonthly.length === 0) { dom.tableMonthlyBody.innerHTML = ''; dom.tableMonthlyHead.innerHTML = ''; return; }
+                
+                const dataToRender = [...dfMonthly].sort((a, b) => {
+                    const col = sortStateMonthly.column;
+                    const valA = a[col], valB = b[col];
+                    let comparison = (typeof valA === 'number' && typeof valB === 'number') ? valA - valB : String(valA || '').localeCompare(String(valB || ''));
+                    return sortStateMonthly.direction === 'asc' ? comparison : -comparison;
+                });
+
+                const headers = Object.keys(dfMonthly[0] || {});
+                dom.tableMonthlyHead.innerHTML = `<tr>${headers.map(h => 
+                    `<th data-col="${h}" class="${(h === sortStateMonthly.column) ? `sort-${sortStateMonthly.direction}` : ''}">${h}</th>`
+                ).join('')}</tr>`;
+                
+                dom.tableMonthlyBody.innerHTML = dataToRender.map(row => `<tr>${headers.map(h => `<td>${row[h]}</td>`).join('')}</tr>`).join('');
+            };
+
+                        const updateDashboard = () => {
+                const chartValidVisits = rawData.visits.filter(r => r['Billed Service 1 Date'] instanceof Date && !isNaN(r['Billed Service 1 Date']));
+
+                if (dfSummary.length === 0 || chartValidVisits.length === 0) {
+                    dom.statTotal.textContent = dom.statActive.textContent = dom.statOverdue.textContent = dom.statNoPa.textContent = '0';
+                    if (chartInstance) chartInstance.destroy();
+                    chartInstance = null;
+                    return;
+                }
+                dom.statTotal.textContent = dfSummary.length;
+                dom.statActive.textContent = dfSummary.filter(r => r.Active === 'Active').length;
+                dom.statOverdue.textContent = dfSummary.filter(r => r.isOverdue).length;
+                dom.statNoPa.textContent = dfSummary.filter(r => r['PA Status'] !== 'Active').length;
+
+                // --- Chart data aggregation for stacked bar chart ---
+                let monthlyServiceCounts = {};
+                const allServiceTypesForChart = new Set();
+                chartValidVisits.forEach(r => {
+                    const monthYear = `${String(r['Billed Service 1 Date'].getMonth() + 1).padStart(2,'0')}/${r['Billed Service 1 Date'].getFullYear()}`;
+                    const serviceType = r['Service 1 Description (Code)'] || 'Unknown Service';
+                    if (!monthlyServiceCounts[monthYear]) monthlyServiceCounts[monthYear] = {};
+                    monthlyServiceCounts[monthYear][serviceType] = (monthlyServiceCounts[monthYear][serviceType] || 0) + 1;
+                    allServiceTypesForChart.add(serviceType);
+                });
+
+                let allMonths = Object.keys(monthlyServiceCounts).sort((a, b) => new Date(`01/${a}`) - new Date(`01/${b}`));
+                
+                // Exclude incomplete month if checkbox is checked
+                if (dom.chkExcludeIncomplete.checked) {
+                    const today = new Date();
+                    const currentMonthStr = `${String(today.getMonth() + 1).padStart(2, '0')}/${today.getFullYear()}`;
+                    if (allMonths.length > 0 && allMonths[allMonths.length - 1] === currentMonthStr) {
+                        allMonths.pop();
+                    }
+                }
+                
+                const sortedServiceTypes = [...allServiceTypesForChart].sort();
+                
+                // Calculate total visits for each month (for trendline, tooltips, and labels)
+                const monthlyTotals = allMonths.map(month => {
+                    return Object.values(monthlyServiceCounts[month] || {}).reduce((sum, count) => sum + count, 0);
+                });
+
+                // Calculate trendline data
+                const trend = calculateTrendline(monthlyTotals);
+                const trendlineData = monthlyTotals.map((_, index) => trend.slope * index + trend.intercept);
+
+                const backgroundColors = ['#4285F4','#DB4437','#F4B400','#0F9D58','#673AB7','#FF5722','#00BCD4','#8BC34A','#E91E63','#FFC107','#9E9E9E','#607D8B','#F06292','#A1887F','#FFEE58','#26A69A'];
+                const getColor = (index) => backgroundColors[index % backgroundColors.length];
+
+                const datasets = sortedServiceTypes.map((serviceType, index) => ({
+                    label: serviceType,
+                    data: allMonths.map(month => (monthlyServiceCounts[month] && monthlyServiceCounts[month][serviceType]) || 0),
+                    backgroundColor: getColor(index),
+                    borderColor: '#1E1E1E',
+                    borderWidth: 1
+                }));
+                
+                // Add trendline dataset
+                datasets.push({
+                    label: 'Trend',
+                    data: trendlineData,
+                    type: 'line',
+                    borderColor: '#FF9800',
+                    backgroundColor: 'transparent',
+                    borderWidth: 3,
+                    tension: 0.1,
+                    pointRadius: 0,
+                    pointHoverRadius: 6,
+                    borderDash: [5, 5]
+                });
+
+                // --- Create or update chart ---
+                const chartConfig = {
+                    type: 'bar',
+                    data: { labels: allMonths, datasets: datasets },
+                    options: {
+                        responsive: true, maintainAspectRatio: false,
+                        animation: { duration: chartInstance ? 0 : 750 },
+                        plugins: {
+                            legend: { 
+                                display: true, 
+                                position: 'bottom', 
+                                labels: { color: '#E6E6E6', boxWidth: 15, padding: 10 },
+                                onClick: function(e, legendItem, legend) {
+                                    const index = legendItem.datasetIndex;
+                                    const chart = legend.chart;
+                                    const meta = chart.getDatasetMeta(index);
+                                    meta.hidden = meta.hidden === null ? !chart.data.datasets[index].hidden : null;
+                                    chart.update();
+                                }
+                            },
+                            title: { display: true, text: 'Monthly Billing by Service Type', color: '#E6E6E6', font: { size: 16 } },
+                            tooltip: {
+                                callbacks: {
+                                    afterTitle: function(context) {
+                                        const monthIndex = context[0].dataIndex;
+                                        const total = monthlyTotals[monthIndex];
+                                        return `Total: ${total} visits`;
+                                    },
+                                    label: function(context) {
+                                        const value = context.parsed.y;
+                                        const monthIndex = context.dataIndex;
+                                        const total = monthlyTotals[monthIndex];
+                                        const percentage = ((value / total) * 100).toFixed(1);
+                                        if (context.dataset.label === 'Trend') {
+                                            return `Trend: ${Math.round(value)} visits`;
+                                        }
+                                        return `${context.dataset.label}: ${value} (${percentage}%)`;
+                                    }
+                                }
+                            }
+                        },
+                        scales: {
+                            x: { stacked: true, ticks: { color: '#BBBBBB' }, grid: { color: '#444444' } },
+                            y: { stacked: true, beginAtZero: true, ticks: { color: '#BBBBBB' }, grid: { color: '#444444' },
+                                title: { display: true, text: 'Number of Visits', color: '#BBBBBB' }
+                            }
+                        }
+                    }
+                };
+                if (chartInstance) chartInstance.destroy();
+                chartInstance = new Chart(dom.chartCanvas, chartConfig);
+            };
+
+            const renderAll = () => {
+                renderRecentTable();
+                renderMonthlyTable();
+                updateDashboard();
+                
+                if (rawData.visits.length > 0) {
+                    dom.emptyStatePanel.classList.add('hidden');
+                    dom.dashboardContent.classList.remove('hidden');
+                } else {
+                    dom.emptyStatePanel.classList.remove('hidden');
+                    dom.dashboardContent.classList.add('hidden');
+                }
+            };
+
+            // --- FILE HANDLING ---
+            const loadFile = async (file, type) => {
+                if (!checkFileDate(file)) {
+                    return;
+                }
+
+                dom.statusBar.textContent = `Loading ${type} file...`;
+                const loadingOverlay = document.querySelector('.loading-overlay');
+                loadingOverlay.classList.add('show');
+
+                try {
+                    await new Promise(resolve => setTimeout(resolve, 10));
+                    const reader = new FileReader();
+                    
+                    reader.onload = async (e) => {
+                        try {
+                            let data = [];
+                            
+                            if (file.name.endsWith('.csv')) {
+                                const text = e.target.result;
+                                const rows = text.split('\n').filter(r => r.trim());
+                                if (rows.length > 0) {
+                                    const headers = rows[0].split(',').map(h => h.trim());
+                                    for (let i = 1; i < rows.length; i++) {
+                                        const values = rows[i].split(',').map(v => v.trim());
+                                        let row = {};
+                                        headers.forEach((h, idx) => row[h] = values[idx] || '');
+                                        data.push(row);
+                                    }
+                                }
+                            } else {
+                                const workbook = XLSX.read(new Uint8Array(e.target.result), { type: 'array' });
+                                const sheetName = workbook.SheetNames[0];
+                                data = XLSX.utils.sheet_to_json(workbook.Sheets[sheetName], { defval: '' });
+                            }
+
+                            if (type === 'visits') {
+                                data = data.map(r => ({ ...r, 'Billed Service 1 Date': parseExcelDate(r['Billed Service 1 Date']) }));
+                                rawData.visits = data;
+                            } else if (type === 'pas') {
+                                rawData.pas = data;
+                            } else if (type === 'status') {
+                                rawData.status = data;
+                                statusFileLoaded = true;
+                            }
+
+                            compute();
+                            showToast(`${type.charAt(0).toUpperCase() + type.slice(1)} file loaded successfully!`, 'success');
+                            
+                            // Update raw data source dropdown if we just loaded a file
+                            if (dom.selectRawDataSource.value === '') {
+                                dom.selectRawDataSource.value = type;
+                                dom.selectRawDataSource.dispatchEvent(new Event('change'));
+                            }
+                        } catch (error) {
+                            console.error(error);
+                            showToast(`Error processing ${type} file: ${error.message}`, 'error');
+                        } finally {
+                            loadingOverlay.classList.remove('show');
+                        }
+                    };
+                    
+                    if (file.name.endsWith('.csv')) {
+                        reader.readAsText(file);
+                    } else {
+                        reader.readAsArrayBuffer(file);
+                    }
+                } catch (error) {
+                    loadingOverlay.classList.remove('show');
+                    console.error(error);
+                    showToast(`Error loading ${type} file: ${error.message}`, 'error');
+                }
+            };
+
+            const exportToExcel = async () => {
+                if (dfSummary.length === 0) {
+                    showToast('No data to export. Please load a visit report first.', 'error');
+                    return;
+                }
+                
+                dom.statusBar.textContent = 'Exporting to Excel...';
+                const loadingOverlay = document.querySelector('.loading-overlay');
+                loadingOverlay.classList.add('show');
+                
+                try {
+                    await new Promise(resolve => setTimeout(resolve, 10));
+                    const workbook = new ExcelJS.Workbook();
+                    workbook.creator = 'EVV Billing Analyzer';
+                    workbook.created = new Date();
+                    
+                    // Summary Sheet
+                    const summarySheet = workbook.addWorksheet('Recent Billing Summary');
+                    const summaryHeaders = ['Individual Name', 'Last Billed Date', 'Days Since Last Billing', 'Medicaid Number', 'Focus Active', 'PA Status', 'Therap Provider', 'Focus Assignments'];
+                    
+                    summarySheet.columns = summaryHeaders.map(h => ({ header: h, key: h, width: 20 }));
+                    
+                    dfSummary.forEach(row => {
+                        summarySheet.addRow({
+                            'Individual Name': row['Individual Name'],
+                            'Last Billed Date': formatDate(row['Billed Service 1 Date']),
+                            'Days Since Last Billing': row['Days Since Last Billing'],
+                            'Medicaid Number': row['Medicaid Number'],
+                            'Focus Active': row['Active'],
+                            'PA Status': row['PA Status'],
+                            'Therap Provider': row['Therap Provider'],
+                            'Focus Assignments': row['Focus Assignments']
+                        });
+                    });
+                    
+                    // Style summary sheet
+                    summarySheet.getRow(1).font = { bold: true };
+                    summarySheet.getRow(1).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF4472C4' } };
+                    summarySheet.getRow(1).alignment = { horizontal: 'center' };
+                    
+                    summarySheet.eachRow((row, rowNumber) => {
+                        if (rowNumber > 1) {
+                            const daysCell = row.getCell(3);
+                            if (daysCell.value > overdueDays) {
+                                daysCell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFF0000' } };
+                                daysCell.font = { color: { argb: 'FFFFFFFF' }, bold: true };
+                            }
+                            
+                            const activeCell = row.getCell(5);
+                            if (activeCell.value === 'Inactive') {
+                                activeCell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFF0000' } };
+                                activeCell.font = { color: { argb: 'FFFFFFFF' } };
+                            }
+                            
+                            const paCell = row.getCell(6);
+                            if (paCell.value === 'No PA' || (paCell.value !== 'Active' && paCell.value !== 'N/A')) {
+                                paCell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFFA500' } };
+                            }
+                        }
+                    });
+                    
+                    // Monthly Sheet
+                    if (dfMonthly.length > 0) {
+                        const monthlySheet = workbook.addWorksheet('Monthly Summary');
+                        const monthlyHeaders = Object.keys(dfMonthly[0]);
+                        monthlySheet.columns = monthlyHeaders.map(h => ({ header: h, key: h, width: 15 }));
+                        dfMonthly.forEach(row => monthlySheet.addRow(row));
+                        
+                        monthlySheet.getRow(1).font = { bold: true };
+                        monthlySheet.getRow(1).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF70AD47' } };
+                        monthlySheet.getRow(1).alignment = { horizontal: 'center' };
+                    }
+                    
+                    // Raw Visit Data Sheet
+                    if (rawData.visits.length > 0) {
+                        const rawSheet = workbook.addWorksheet('Raw Visit Data');
+                        const rawHeaders = Object.keys(rawData.visits[0]);
+                        rawSheet.columns = rawHeaders.map(h => ({ header: h, key: h, width: 20 }));
+                        
+                        rawData.visits.forEach(row => {
+                            const rowData = { ...row };
+                            if (row['Billed Service 1 Date'] instanceof Date) {
+                                rowData['Billed Service 1 Date'] = formatDate(row['Billed Service 1 Date']);
+                            }
+                            rawSheet.addRow(rowData);
+                        });
+                        
+                        rawSheet.getRow(1).font = { bold: true };
+                        rawSheet.getRow(1).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFFC000' } };
+                        rawSheet.getRow(1).alignment = { horizontal: 'center' };
+                    }
+                    
+                    const buffer = await workbook.xlsx.writeBuffer();
+                    const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+                    const url = URL.createObjectURL(blob);
+                    
+                    const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, -5);
+                    const a = document.createElement('a');
+                    a.href = url;
+                    a.download = `EVV_Analysis_${timestamp}.xlsx`;
+                    document.body.appendChild(a);
+                    a.click();
+                    document.body.removeChild(a);
+                    URL.revokeObjectURL(url);
+                    
+                    showToast('Data exported to Excel successfully!', 'success');
+                    dom.statusBar.textContent = 'Export complete';
+                } catch (error) {
+                    console.error('Export error:', error);
+                    showToast('Error exporting to Excel: ' + error.message, 'error');
+                    dom.statusBar.textContent = 'Export failed';
+                } finally {
+                    loadingOverlay.classList.remove('show');
+                }
+            };
+
+            const copyTableToClipboard = async () => {
+                if (dfSummary.length === 0) {
+                    showToast('No data to copy. Please load data first.', 'error');
+                    return;
+                }
+                
+                try {
+                    const headers = ['Individual Name', 'Last Billed Date', 'Days Since Last Billing', 'Medicaid Number', 'Focus Active', 'PA Status', 'Therap Provider', 'Focus Assignments'];
+                    let text = headers.join('\t') + '\n';
+                    
+                    const dataToRender = getFilteredAndSortedData();
+                    dataToRender.forEach(row => {
+                        text += [
+                            row['Individual Name'],
+                            formatDate(row['Billed Service 1 Date']),
+                            row['Days Since Last Billing'],
+                            row['Medicaid Number'],
+                            row['Active'],
+                            row['PA Status'],
+                            row['Therap Provider'],
+                            row['Focus Assignments']
+                        ].join('\t') + '\n';
+                    });
+                    
+                    await navigator.clipboard.writeText(text);
+                    showToast('Table copied to clipboard!', 'success');
+                } catch (error) {
+                    console.error('Copy error:', error);
+                    showToast('Error copying to clipboard', 'error');
+                }
+            };
+
+            const clearAllData = () => {
+                if (confirm('Are you sure you want to clear all data? This action cannot be undone.')) {
+                    rawData = { visits: [], pas: [], status: [] };
+                    dfSummary = [];
+                    dfMonthly = [];
+                    statusFileLoaded = false;
+                    dom.searchInput.value = '';
+                    dom.filterActive.value = 'all';
+                    dom.filterPa.value = 'all';
+                    dom.selectRawDataSource.value = '';
+                    renderAll();
+                    renderRawDataTable();
+                    showToast('All data cleared', 'info');
+                    dom.statusBar.textContent = 'Ready';
+                }
+            };
+
+            // --- RAW DATA TAB ---
+            const renderRawDataTable = () => {
+                const source = dom.selectRawDataSource.value;
+                const searchTerm = dom.rawDataSearchInput.value.toLowerCase();
+                
+                if (!source || !rawData[source] || rawData[source].length === 0) {
+                    document.querySelector('#table-raw-data thead').innerHTML = '';
+                    document.querySelector('#table-raw-data tbody').innerHTML = '<tr><td style="text-align: center; padding: 20px;">No data available</td></tr>';
+                    return;
+                }
+                
+                const data = rawData[source];
+                const allColumns = [...new Set(data.flatMap(row => Object.keys(row)))];
+                
+                // Get visible columns
+                let visibleColumns = rawDataState.visibleColumns[source];
+                if (!visibleColumns) {
+                    visibleColumns = allColumns;
+                    rawDataState.visibleColumns[source] = visibleColumns;
+                }
+                
+                // Filter data based on search
+                let filteredData = data;
+                if (searchTerm) {
+                    filteredData = data.filter(row => 
+                        visibleColumns.some(col => 
+                            String(row[col] || '').toLowerCase().includes(searchTerm)
+                        )
+                    );
+                }
+                
+                // Render table header
+                const thead = document.querySelector('#table-raw-data thead');
+                thead.innerHTML = `<tr>${visibleColumns.map(col => `<th>${col}</th>`).join('')}</tr>`;
+                
+                // Render table body (limit to first 500 rows for performance)
+                const tbody = document.querySelector('#table-raw-data tbody');
+                const rowsToDisplay = filteredData.slice(0, 500);
+                
+                tbody.innerHTML = rowsToDisplay.map(row => 
+                    `<tr>${visibleColumns.map(col => {
+                        let value = row[col];
+                        if (value instanceof Date) {
+                            value = formatDate(value);
+                        } else if (value === null || value === undefined) {
+                            value = '';
+                        }
+                        return `<td>${value}</td>`;
+                    }).join('')}</tr>`
+                ).join('');
+                
+                if (filteredData.length > 500) {
+                    tbody.innerHTML += `<tr><td colspan="${visibleColumns.length}" style="text-align: center; padding: 10px; font-style: italic;">Showing first 500 of ${filteredData.length} rows</td></tr>`;
+                }
+            };
+
+            const renderColumnSelector = () => {
+                const source = dom.selectRawDataSource.value;
+                if (!source || !rawData[source] || rawData[source].length === 0) {
+                    dom.columnSelectorContainer.innerHTML = '<p>No columns available</p>';
+                    return;
+                }
+                
+                const data = rawData[source];
+                const allColumns = [...new Set(data.flatMap(row => Object.keys(row)))];
+                let visibleColumns = rawDataState.visibleColumns[source] || allColumns;
+                
+                dom.columnSelectorContainer.innerHTML = allColumns.map(col => `
+                    <label>
+                        <input type="checkbox" value="${col}" ${visibleColumns.includes(col) ? 'checked' : ''}>
+                        ${col}
+                    </label>
+                `).join('');
+            };
+
+            // --- EVENT LISTENERS ---
+            dom.btnLoadVisit.onclick = () => dom.inputVisit.click();
+            dom.btnLoadVisitMain.onclick = () => dom.inputVisit.click();
+            dom.btnLoadPa.onclick = () => dom.inputPa.click();
+            dom.btnLoadStatus.onclick = () => dom.inputStatus.click();
+            dom.btnExport.onclick = exportToExcel;
+            dom.btnCopy.onclick = copyTableToClipboard;
+            dom.btnClear.onclick = clearAllData;
+            
+            dom.inputVisit.onchange = (e) => e.target.files[0] && loadFile(e.target.files[0], 'visits');
+            dom.inputPa.onchange = (e) => e.target.files[0] && loadFile(e.target.files[0], 'pas');
+            dom.inputStatus.onchange = (e) => e.target.files[0] && loadFile(e.target.files[0], 'status');
+            
+            dom.searchInput.oninput = renderRecentTable;
+            dom.filterActive.onchange = renderRecentTable;
+            dom.filterPa.onchange = renderRecentTable;
+            
+            dom.tableRecentHead.onclick = (e) => {
+                if (e.target.tagName === 'TH') {
+                    const col = e.target.dataset.col;
+                    if (sortStateRecent.column === col) {
+                        sortStateRecent.direction = sortStateRecent.direction === 'asc' ? 'desc' : 'asc';
+                    } else {
+                        sortStateRecent.column = col;
+                        sortStateRecent.direction = 'asc';
+                    }
+                    renderRecentTable();
+                }
+            };
+            
+            dom.tableMonthlyHead.onclick = (e) => {
+                if (e.target.tagName === 'TH') {
+                    const col = e.target.dataset.col;
+                    if (sortStateMonthly.column === col) {
+                        sortStateMonthly.direction = sortStateMonthly.direction === 'asc' ? 'desc' : 'asc';
+                    } else {
+                        sortStateMonthly.column = col;
+                        sortStateMonthly.direction = 'asc';
+                    }
+                    renderMonthlyTable();
+                }
+            };
+            
+            // Tab switching
+            document.querySelectorAll('.tab-button').forEach(btn => {
+                btn.onclick = () => {
+                    document.querySelectorAll('.tab-button').forEach(b => b.classList.remove('active'));
+                    document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+                    btn.classList.add('active');
+                    document.getElementById(`${btn.dataset.tab}-view`).classList.add('active');
+                };
+            });
+            
+            // Settings
+            dom.btnSaveSettings.onclick = () => {
+                overdueDays = parseInt(dom.settingOverdueDays.value);
+                localStorage.setItem('billing_overdue_days', overdueDays);
+                compute();
+                showToast('Settings saved successfully!', 'success');
+            };
+            
+            // Checkbox event listener for exclude incomplete month
+            dom.chkExcludeIncomplete.onchange = () => {
+                updateDashboard();
+            };
+            
+            // Raw data tab event listeners
+            dom.selectRawDataSource.onchange = () => {
+                rawDataState.currentSource = dom.selectRawDataSource.value;
+                renderRawDataTable();
+                renderColumnSelector();
+            };
+            
+            dom.rawDataSearchInput.oninput = renderRawDataTable;
+            
+            dom.btnToggleColumns.onclick = () => {
+                const selector = document.getElementById('column-selector');
+                selector.classList.toggle('hidden');
+                if (!selector.classList.contains('hidden')) {
+                    renderColumnSelector();
+                }
+            };
+            
+            dom.btnSaveColumnPreferences.onclick = () => {
+                const source = dom.selectRawDataSource.value;
+                if (!source) return;
+                
+                const checkboxes = dom.columnSelectorContainer.querySelectorAll('input[type="checkbox"]');
+                const selectedColumns = [];
+                checkboxes.forEach(cb => {
+                    if (cb.checked) selectedColumns.push(cb.value);
+                });
+                
+                rawDataState.visibleColumns[source] = selectedColumns;
+                saveVisibleColumns();
+                renderRawDataTable();
+                showToast('Column preferences saved!', 'success');
+            };
+            
+            dom.btnResetColumns.onclick = () => {
+                const source = dom.selectRawDataSource.value;
+                if (!source || !rawData[source] || rawData[source].length === 0) return;
+                
+                const allColumns = [...new Set(rawData[source].flatMap(row => Object.keys(row)))];
+                rawDataState.visibleColumns[source] = allColumns;
+                saveVisibleColumns();
+                renderColumnSelector();
+                renderRawDataTable();
+                showToast('Columns reset to default', 'info');
+            };
+            
+            // Click outside to close column selector
+            document.addEventListener('click', (e) => {
+                const selector = document.getElementById('column-selector');
+                const button = document.getElementById('btn-toggle-columns');
+                if (!selector.contains(e.target) && e.target !== button && !button.contains(e.target)) {
+                    selector.classList.add('hidden');
+                }
+            });
+            
+            // Load saved settings
+            const savedOverdueDays = localStorage.getItem('billing_overdue_days');
+            if (savedOverdueDays) {
+                overdueDays = parseInt(savedOverdueDays);
+                dom.settingOverdueDays.value = overdueDays;
+            }
+            
+            // Keyboard shortcuts
+            document.addEventListener('keydown', (e) => {
+                if (e.ctrlKey || e.metaKey) {
+                    switch(e.key) {
+                        case 'o': e.preventDefault(); dom.inputVisit.click(); break;
+                        case 's': e.preventDefault(); exportToExcel(); break;
+                        case 'k': e.preventDefault(); dom.searchInput.focus(); break;
+                    }
+                }
+            });
+            
+            // Initialize
+            dom.statusBar.textContent = 'Ready - Load a visit report to begin';
+        })();
+    </script>
+</body>
+</html>
