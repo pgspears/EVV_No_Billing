@@ -89,6 +89,7 @@
         .instructions-content li { margin-bottom: 15px; line-height: 1.6; }
         .instructions-content strong { color: #FFF; }
         .instructions-content a { color: var(--c-highlight); }
+        .instructions-content code { background: var(--c-bg-alt); padding: 2px 6px; border-radius: 3px; font-family: 'Consolas', monospace; font-size: 13px; }
         .form-row { display: flex; align-items: center; gap: 10px; margin-bottom: 15px; }
         .form-row label { flex-basis: 200px; text-align: right; }
         #toast-container { position: fixed; bottom: 20px; right: 20px; z-index: 9999; display: flex; flex-direction: column; gap: 10px; }
@@ -97,6 +98,7 @@
         .toast.success { background-color: #28a745; }
         .toast.error { background-color: #dc3545; }
         .toast.info { background-color: #17a2b8; }
+        .toast.warning { background-color: #ffc107; color: #111; }
         #status-bar { padding: 4px 8px; background-color: var(--c-bg-window); border-top: 1px solid var(--c-gridline); font-size: 12px; flex-shrink: 0; display: flex; justify-content: space-between; align-items: center; }
         #status-bar span { color: var(--c-text-light); }
         /* Raw Data Tab Styles */
@@ -129,7 +131,7 @@
     
     <div class="toolbar">
         <button id="btn-load-visit" class="tool-btn" title="Load Therap Visit Report"><span>📁</span> Visit Report</button>
-        <button id="btn-load-pa" class="tool-btn" title="Load FOCUS PA Report"><span>📋</span> PA Report</button>
+        <button id="btn-load-pa" class="tool-btn" title="Load Therap PA Report"><span>📋</span> PA Report</button>
         <button id="btn-load-status" class="tool-btn" title="Load FOCUS Status Report"><span>📊</span> Status Report</button>
         <span style="border-left: 1px solid #444; height: 20px; margin: 0 10px;"></span>
         <button id="btn-export" class="tool-btn" title="Export All Data to Excel"><span>💾</span> Export</button>
@@ -228,7 +230,7 @@
                     <select id="select-raw-data-source">
                         <option value="">Select a data source...</option>
                         <option value="visits">Therap Visit Report</option>
-                        <option value="pas">FOCUS PA Report</option>
+                        <option value="pas">Therap PA Report</option>
                         <option value="status">FOCUS Status Report</option>
                     </select>
                     <input type="text" id="raw-data-search-input" placeholder="Search raw data...">
@@ -272,14 +274,19 @@
                     <ol>
                         <li>
                             <strong>Therap Visit Report (Required)</strong><br>
-                            This is your main data file from Therap containing billing information.
+                            <em>Report Name:</em> <code>Scheduling/EVV - Detailed Slot Report with Exception Code and Description</code><br>
+                            <em>Location:</em> <a href="https://secure.therapservices.net/ma/flexibleReports/reportCriteria.do?reportId=19131" target="_blank">Therap Flexible Reports</a><br>
+                            This is your main data file from Therap containing billing information. The app uses the "Check-In Date" column (column AB) to determine visit dates.
                         </li>
                         <li>
-                            <strong>FOCUS PA Report (Optional)</strong><br>
-                            Provides Prior Authorization status for each individual.
+                            <strong>Therap PA Report (Optional)</strong><br>
+                            <em>Location:</em> <a href="https://secure.therapservices.net/ma/billing/sAuthSearch" target="_blank">Billing &gt; Service Authorization &gt; Search</a><br>
+                            Download the search results to get Prior Authorization status. The report uses the "Individual" column for client names and "Expiry Status" column to determine PA status. A client is considered to have an active PA if <em>any</em> row shows "Active" in the Expiry Status column.
                         </li>
                         <li>
                             <strong>FOCUS Status Report (Optional)</strong><br>
+                            <em>Report Name:</em> <code>Client By Status</code><br>
+                            <em>Location:</em> <a href="https://tis.focuscbmapp.com/reports/datageniereport?id=b3e01287-9c99-4f6e-8d00-aed659bfa308&name=Client%20By%20Status" target="_blank">FOCUS DataGenie Reports</a><br>
                             Shows active/inactive status and provider assignments in FOCUS.
                         </li>
                     </ol>
@@ -313,6 +320,7 @@
                         <li>Use the search box to quickly find specific individuals</li>
                         <li>The trend line on the chart shows overall billing trajectory</li>
                         <li>Column preferences are saved automatically and persist between sessions</li>
+                        <li>Files older than 1 day will show a warning prompt before loading</li>
                     </ul>
                 </div>
             </div>
@@ -321,7 +329,7 @@
     
     <div id="status-bar">
         <span>Ready</span>
-        <span>EVV Billing Analyzer v2.0</span>
+        <span>EVV Billing Analyzer v2.1</span>
     </div>
     
     <div id="toast-container"></div>
@@ -373,7 +381,7 @@
                 statTotal: document.getElementById('stat-total'), statActive: document.getElementById('stat-active'),
                 statOverdue: document.getElementById('stat-overdue'), statNoPa: document.getElementById('stat-no-pa'),
                 chartCanvas: document.getElementById('billing-chart'),
-                chkExcludeIncomplete: document.getElementById('chk-exclude-incomplete'), // New checkbox
+                chkExcludeIncomplete: document.getElementById('chk-exclude-incomplete'),
                 selectRawDataSource: document.getElementById('select-raw-data-source'),
                 columnSelectorContainer: document.getElementById('column-selector-container'),
                 tableRawData: document.getElementById('table-raw-data'),
@@ -461,11 +469,11 @@
                 }
                 dom.statusBar.textContent = 'Processing...';
 
-                const validVisits = rawData.visits.filter(r => r['Individual Name'] && r['Billed Service 1 Date'] instanceof Date && !isNaN(r['Billed Service 1 Date']));
+                const validVisits = rawData.visits.filter(r => r['Individual Name'] && r['Check-In Date'] instanceof Date && !isNaN(r['Check-In Date']));
                 
                 let summaryMap = new Map();
                 validVisits.forEach(r => {
-                    if (!summaryMap.has(r['Individual Name']) || r['Billed Service 1 Date'] > summaryMap.get(r['Individual Name'])['Billed Service 1 Date']) {
+                    if (!summaryMap.has(r['Individual Name']) || r['Check-In Date'] > summaryMap.get(r['Individual Name'])['Check-In Date']) {
                         summaryMap.set(r['Individual Name'], r);
                     }
                 });
@@ -486,7 +494,7 @@
                 }
 
                 dfSummary = Array.from(summaryMap.values()).map(row => {
-                    const lastBilled = row['Billed Service 1 Date'];
+                    const lastBilled = row['Check-In Date'];
                     const maidNumber = String(row['Medicaid Number']);
                     const statusRow = statusDataMap.get(maidNumber);
                     
@@ -509,20 +517,41 @@
                     };
                 });
 
+                // Process PA data from Therap PA Report
+                // Uses "Individual" column for client name and "Expiry Status" column for status
+                // A client has an active PA if ANY row has Expiry Status = "Active"
                 if (rawData.pas.length > 0) {
-                    const paData = rawData.pas.map(r => ({ ...r, 'Begin Date': parseExcelDate(r['Begin Date']), 'End Date': parseExcelDate(r['End Date']), 'Individual_clean': cleanName(r.Individual) }));
-                    const paGroups = paData.reduce((acc, r) => { (acc[r.Individual_clean] = acc[r.Individual_clean] || []).push(r); return acc; }, {});
+                    // Build a map of client names to their PA status
+                    // Group by cleaned individual name
+                    const paStatusMap = new Map();
+                    
+                    rawData.pas.forEach(r => {
+                        const individualName = r['Individual'] || '';
+                        const cleanedName = cleanName(individualName);
+                        const expiryStatus = (r['Expiry Status'] || '').toString().trim().toLowerCase();
+                        
+                        if (!cleanedName) return;
+                        
+                        // Check if this row has an active expiry status
+                        const isActive = expiryStatus === 'active';
+                        
+                        // If client already has active status, keep it
+                        // Otherwise, update based on current row
+                        if (!paStatusMap.has(cleanedName)) {
+                            paStatusMap.set(cleanedName, isActive ? 'Active' : 'Expired');
+                        } else if (isActive) {
+                            // If ANY row is active, mark as active
+                            paStatusMap.set(cleanedName, 'Active');
+                        }
+                        // If current status is already 'Active', don't downgrade to 'Expired'
+                    });
 
                     dfSummary.forEach(row => {
-                        const records = paGroups[row.Individual_clean];
-                        if (!records) { row['PA Status'] = 'No PA'; return; } 
-                        
-                        const active = records.find(p => p['Begin Date'] <= today && p['End Date'] >= today);
-                        if (active) {
-                            row['PA Status'] = 'Active';
+                        const paStatus = paStatusMap.get(row.Individual_clean);
+                        if (!paStatus) {
+                            row['PA Status'] = 'No PA';
                         } else {
-                            const maxEnd = new Date(Math.max(...records.map(p => p['End Date']).filter(d => d instanceof Date && !isNaN(d))));
-                            row['PA Status'] = (maxEnd instanceof Date && !isNaN(maxEnd)) ? formatDate(maxEnd) : 'Expired';
+                            row['PA Status'] = paStatus;
                         }
                     });
                 } else {
@@ -533,34 +562,28 @@
                 
                 let tempMonthlyMap = new Map();
                 validVisits.forEach(r => {
-                    const name = r['Individual Name'], date = r['Billed Service 1 Date'];
+                    const name = r['Individual Name'], date = r['Check-In Date'];
                     if (!(date instanceof Date) || isNaN(date)) return;
-                    const month = `${String(date.getMonth() + 1).padStart(2,'0')}/${date.getFullYear()}`;
-                    if (!tempMonthlyMap.has(name)) tempMonthlyMap.set(name, {});
-                    tempMonthlyMap.get(name)[month] = (tempMonthlyMap.get(name)[month] || 0) + 1;
+                    const monthYear = `${String(date.getMonth() + 1).padStart(2, '0')}/${date.getFullYear()}`;
+                    const key = `${name}|${monthYear}`;
+                    if (!tempMonthlyMap.has(key)) {
+                        tempMonthlyMap.set(key, { 'Individual Name': name, 'Month/Year': monthYear, 'Billing Count': 0 });
+                    }
+                    tempMonthlyMap.get(key)['Billing Count']++;
                 });
-
-                const allMonthsForTable = [...new Set(validVisits.map(r => `${String(r['Billed Service 1 Date'].getMonth() + 1).padStart(2,'0')}/${r['Billed Service 1 Date'].getFullYear()}`))]
-                    .sort((a,b) => new Date(`01/${a}`) - new Date(`01/${b}`));
-
-                dfMonthly = Array.from(tempMonthlyMap.entries()).map(([name, months]) => {
-                    let row = { 'Individual Name': name };
-                    allMonthsForTable.forEach(m => row[m] = months[m] || 0);
-                    row['Total'] = Object.values(months).reduce((a, b) => a + b, 0);
-                    return row;
-                });
-
+                dfMonthly = Array.from(tempMonthlyMap.values()).sort((a, b) => a['Individual Name'].localeCompare(b['Individual Name']));
+                
                 renderAll();
-                dom.statusBar.textContent = `Loaded: ${dfSummary.length} individuals | ${validVisits.length} visits`;
+                dom.statusBar.textContent = `Loaded ${rawData.visits.length} visits for ${dfSummary.length} individuals`;
             };
 
             const getFilteredAndSortedData = () => {
-                const searchTerm = dom.searchInput.value.toLowerCase();
+                const query = dom.searchInput.value.toLowerCase();
                 const activeFilter = dom.filterActive.value;
                 const paFilter = dom.filterPa.value;
 
-                let filtered = dfSummary.filter(row => {
-                    if (searchTerm && !row['Individual Name'].toLowerCase().includes(searchTerm)) return false;
+                const filtered = dfSummary.filter(row => {
+                    if (query && !row['Individual Name']?.toLowerCase().includes(query)) return false;
                     if (activeFilter === 'active' && row.Active !== 'Active') return false;
                     if (activeFilter === 'inactive' && row.Active !== 'Inactive') return false;
                     if (paFilter === 'active-pa' && row['PA Status'] !== 'Active') return false;
@@ -590,9 +613,8 @@
                 const dataToRender = getFilteredAndSortedData();
                 dom.summaryLabel.textContent = `Displaying ${dataToRender.length} of ${dfSummary.length} individuals.`;
 
-                // MODIFIED: Changed column order as requested
                 const headers = ['Individual Name', 'Last Billed Date', 'Days Since Last Billing', 'Therap Provider', 'Focus Assignments', 'Medicaid Number', 'Focus Active', 'PA Status'];
-                const originalHeaders = ['Individual Name', 'Billed Service 1 Date', 'Days Since Last Billing', 'Therap Provider', 'Focus Assignments', 'Medicaid Number', 'Active', 'PA Status'];
+                const originalHeaders = ['Individual Name', 'Check-In Date', 'Days Since Last Billing', 'Therap Provider', 'Focus Assignments', 'Medicaid Number', 'Active', 'PA Status'];
 
                 dom.tableRecentHead.innerHTML = `<tr>${headers.map((h, i) => 
                     `<th data-col="${originalHeaders[i]}" class="${(originalHeaders[i] === sortStateRecent.column) ? `sort-${sortStateRecent.direction}` : ''}">${h}</th>`
@@ -601,11 +623,11 @@
                 dom.tableRecentBody.innerHTML = dataToRender.map(row => {
                     const overdueClass = row.isOverdue ? 'status-overdue' : '';
                     const activeClass = row.Active === 'Inactive' ? 'status-inactive' : '';
-                    const paClass = (row['PA Status'] === 'No PA' || (row['PA Status'] !== 'Active' && row['PA Status'] !== 'N/A')) ? 'status-pa-expired' : '';
+                    const paClass = (row['PA Status'] === 'No PA' || row['PA Status'] === 'Expired') ? 'status-pa-expired' : '';
                     
                     return `<tr>
                                 <td>${row['Individual Name'] || ''}</td>
-                                <td>${formatDate(row['Billed Service 1 Date'])}</td>
+                                <td>${formatDate(row['Check-In Date'])}</td>
                                 <td class="${overdueClass}">${row['Days Since Last Billing']}</td>
                                 <td>${row['Therap Provider'] || ''}</td>
                                 <td>${row['Focus Assignments'] || ''}</td>
@@ -635,7 +657,7 @@
             };
 
                         const updateDashboard = () => {
-                const chartValidVisits = rawData.visits.filter(r => r['Billed Service 1 Date'] instanceof Date && !isNaN(r['Billed Service 1 Date']));
+                const chartValidVisits = rawData.visits.filter(r => r['Check-In Date'] instanceof Date && !isNaN(r['Check-In Date']));
 
                 if (dfSummary.length === 0 || chartValidVisits.length === 0) {
                     dom.statTotal.textContent = dom.statActive.textContent = dom.statOverdue.textContent = dom.statNoPa.textContent = '0';
@@ -646,13 +668,13 @@
                 dom.statTotal.textContent = dfSummary.length;
                 dom.statActive.textContent = dfSummary.filter(r => r.Active === 'Active').length;
                 dom.statOverdue.textContent = dfSummary.filter(r => r.isOverdue).length;
-                dom.statNoPa.textContent = dfSummary.filter(r => r['PA Status'] !== 'Active').length;
+                dom.statNoPa.textContent = dfSummary.filter(r => r['PA Status'] !== 'Active' && r['PA Status'] !== 'N/A').length;
 
                 // --- Chart data aggregation for stacked bar chart ---
                 let monthlyServiceCounts = {};
                 const allServiceTypesForChart = new Set();
                 chartValidVisits.forEach(r => {
-                    const monthYear = `${String(r['Billed Service 1 Date'].getMonth() + 1).padStart(2,'0')}/${r['Billed Service 1 Date'].getFullYear()}`;
+                    const monthYear = `${String(r['Check-In Date'].getMonth() + 1).padStart(2,'0')}/${r['Check-In Date'].getFullYear()}`;
                     const serviceType = r['Service 1 Description (Code)'] || 'Unknown Service';
                     if (!monthlyServiceCounts[monthYear]) monthlyServiceCounts[monthYear] = {};
                     monthlyServiceCounts[monthYear][serviceType] = (monthlyServiceCounts[monthYear][serviceType] || 0) + 1;
@@ -810,7 +832,7 @@
                             }
 
                             if (type === 'visits') {
-                                data = data.map(r => ({ ...r, 'Billed Service 1 Date': parseExcelDate(r['Billed Service 1 Date']) }));
+                                data = data.map(r => ({ ...r, 'Check-In Date': parseExcelDate(r['Check-In Date']) }));
                                 rawData.visits = data;
                             } else if (type === 'pas') {
                                 rawData.pas = data;
@@ -848,8 +870,8 @@
             };
 
             const exportToExcel = async () => {
-                if (dfSummary.length === 0) {
-                    showToast('No data to export. Please load a visit report first.', 'error');
+                if (rawData.visits.length === 0) {
+                    showToast('No data to export. Please load data first.', 'error');
                     return;
                 }
                 
@@ -872,7 +894,7 @@
                     dfSummary.forEach(row => {
                         summarySheet.addRow({
                             'Individual Name': row['Individual Name'],
-                            'Last Billed Date': formatDate(row['Billed Service 1 Date']),
+                            'Last Billed Date': formatDate(row['Check-In Date']),
                             'Days Since Last Billing': row['Days Since Last Billing'],
                             'Medicaid Number': row['Medicaid Number'],
                             'Focus Active': row['Active'],
@@ -902,7 +924,7 @@
                             }
                             
                             const paCell = row.getCell(6);
-                            if (paCell.value === 'No PA' || (paCell.value !== 'Active' && paCell.value !== 'N/A')) {
+                            if (paCell.value === 'No PA' || paCell.value === 'Expired') {
                                 paCell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFFA500' } };
                             }
                         }
@@ -928,8 +950,8 @@
                         
                         rawData.visits.forEach(row => {
                             const rowData = { ...row };
-                            if (row['Billed Service 1 Date'] instanceof Date) {
-                                rowData['Billed Service 1 Date'] = formatDate(row['Billed Service 1 Date']);
+                            if (row['Check-In Date'] instanceof Date) {
+                                rowData['Check-In Date'] = formatDate(row['Check-In Date']);
                             }
                             rawSheet.addRow(rowData);
                         });
@@ -977,7 +999,7 @@
                     dataToRender.forEach(row => {
                         text += [
                             row['Individual Name'],
-                            formatDate(row['Billed Service 1 Date']),
+                            formatDate(row['Check-In Date']),
                             row['Days Since Last Billing'],
                             row['Medicaid Number'],
                             row['Active'],
